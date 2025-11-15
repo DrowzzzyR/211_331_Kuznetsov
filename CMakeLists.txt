@@ -23,6 +23,8 @@ set(SOURCES
     mainwindow.h
     encryptionmanager.cpp
     encryptionmanager.h
+    debugprotection.cpp
+    debugprotection.h
 )
 
 add_executable(${PROJECT_NAME} ${SOURCES})
