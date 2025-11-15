@@ -25,6 +25,8 @@ set(SOURCES
     encryptionmanager.h
     debugprotection.cpp
     debugprotection.h
+    integritycheck.cpp
+    integritycheck.h
 )
 
 add_executable(${PROJECT_NAME} ${SOURCES})
@@ -32,6 +34,11 @@ add_executable(${PROJECT_NAME} ${SOURCES})
 find_package(OpenSSL REQUIRED)
 
 target_link_libraries(${PROJECT_NAME} PRIVATE ${QT_PACKAGE}::Widgets OpenSSL::Crypto)
+
+# Подключаем Windows-специфичные библиотеки для работы с PE-файлами
+if(WIN32)
+    target_link_libraries(${PROJECT_NAME} PRIVATE imagehlp)
+endif()
 
 # Копируем папку data с JSON и зашифрованными файлами в директорию сборки
 # Используем configure_file для каждого файла, чтобы обновлять при изменении
