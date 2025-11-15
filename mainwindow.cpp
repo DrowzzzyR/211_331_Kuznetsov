@@ -1,4 +1,5 @@
 #include "mainwindow.h"
+#include "encryptionmanager.h"
 #include <QGridLayout>
 #include <QLabel>
 #include <QWidget>
@@ -20,9 +21,41 @@
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
+    , encryptionManager(nullptr)
 {
     setWindowTitle("211_331_Kuznetsov — Товарные накладные");
     setMinimumSize(800, 600);
+    
+    // Инициализируем менеджер шифрования
+    encryptionManager = new EncryptionManager();
+    
+    // Пытаемся загрузить ключ шифрования из файла
+    // Ключ должен находиться в config/encryption.key относительно приложения
+    QString keyPath = QCoreApplication::applicationDirPath() + "/config/encryption.key";
+    QString error;
+    if (!encryptionManager->loadKeyFromFile(keyPath, error)) {
+        // Если ключ не найден, пробуем найти в других местах
+        QDir appDir(QCoreApplication::applicationDirPath());
+        for (int i = 0; i < 5; ++i) {
+            QString candidate = appDir.filePath("config/encryption.key");
+            if (QFile::exists(candidate)) {
+                if (encryptionManager->loadKeyFromFile(candidate, error)) {
+                    qDebug() << "MainWindow::MainWindow: Ключ шифрования загружен из:" << candidate;
+                    break;
+                }
+            }
+            if (!appDir.cdUp()) {
+                break;
+            }
+        }
+        
+        if (!encryptionManager->isReady()) {
+            qDebug() << "MainWindow::MainWindow: Предупреждение - ключ шифрования не загружен. Зашифрованные файлы не будут поддерживаться.";
+            qDebug() << "MainWindow::MainWindow: Ошибка:" << error;
+        }
+    } else {
+        qDebug() << "MainWindow::MainWindow: Ключ шифрования успешно загружен из:" << keyPath;
+    }
     
     setupUI();
     loadDataFromFile();
@@ -30,6 +63,10 @@ MainWindow::MainWindow(QWidget *parent)
 
 MainWindow::~MainWindow()
 {
+    if (encryptionManager) {
+        delete encryptionManager;
+        encryptionManager = nullptr;
+    }
 }
 
 void MainWindow::setupUI()
@@ -115,6 +152,52 @@ QString MainWindow::getDataFilePath()
     return fallback;
 }
 
+bool MainWindow::isEncryptedFile(const QString &filePath) const
+{
+    QFileInfo fileInfo(filePath);
+    QString suffix = fileInfo.suffix().toLower();
+    return suffix == "enc";
+}
+
+QByteArray MainWindow::loadAndDecryptFile(const QString &filePath, QString &errorMessage)
+{
+    QFile file(filePath);
+    if (!file.open(QIODevice::ReadOnly)) {
+        errorMessage = QString("Не удалось открыть файл: %1").arg(file.errorString());
+        return QByteArray();
+    }
+    
+    QByteArray data = file.readAll();
+    file.close();
+    
+    // Проверяем, зашифрован ли файл
+    if (isEncryptedFile(filePath)) {
+        qDebug() << "MainWindow::loadAndDecryptFile: Обнаружен зашифрованный файл:" << filePath;
+        
+        // Проверяем, готов ли менеджер шифрования
+        if (!encryptionManager || !encryptionManager->isReady()) {
+            errorMessage = "Ключ шифрования не загружен. Невозможно расшифровать файл.";
+            return QByteArray();
+        }
+        
+        // Расшифровываем данные
+        QString decryptError;
+        QByteArray decryptedData = encryptionManager->decrypt(data, decryptError);
+        
+        if (decryptedData.isEmpty()) {
+            errorMessage = QString("Ошибка расшифровки: %1").arg(decryptError);
+            return QByteArray();
+        }
+        
+        qDebug() << "MainWindow::loadAndDecryptFile: Файл успешно расшифрован, размер данных:" << decryptedData.size();
+        return decryptedData;
+    } else {
+        // Файл не зашифрован, возвращаем как есть
+        qDebug() << "MainWindow::loadAndDecryptFile: Файл не зашифрован, загружаем как обычный JSON";
+        return data;
+    }
+}
+
 void MainWindow::loadDataFromFile()
 {
     QString filePath = getDataFilePath();
@@ -129,11 +212,24 @@ void MainWindow::loadDataFromFile()
         return;
     }
     
-    if (!parseJsonFile(filePath)) {
+    // Загружаем и расшифровываем файл (если зашифрован)
+    QString errorMessage;
+    QByteArray data = loadAndDecryptFile(filePath, errorMessage);
+    
+    if (data.isEmpty()) {
         QMessageBox::warning(this, "Ошибка загрузки",
                             "Не удалось загрузить данные из файла.\n\n"
                             "Файл: " + filePath + "\n\n"
-                            "Проверьте, что файл существует и имеет правильный формат JSON.");
+                            "Ошибка: " + errorMessage);
+        return;
+    }
+    
+    // Парсим JSON данные
+    if (!parseJsonData(data)) {
+        QMessageBox::warning(this, "Ошибка парсинга",
+                            "Не удалось распарсить данные из файла.\n\n"
+                            "Файл: " + filePath + "\n\n"
+                            "Проверьте, что файл имеет правильный формат JSON.");
         return;
     }
     
@@ -148,28 +244,19 @@ void MainWindow::loadDataFromFile()
     currentFilePath = filePath;
 }
 
-bool MainWindow::parseJsonFile(const QString &filePath)
+bool MainWindow::parseJsonData(const QByteArray &data)
 {
-    QFile file(filePath);
-    if (!file.open(QIODevice::ReadOnly)) {
-        qDebug() << "MainWindow::parseJsonFile: Не удалось открыть файл:" << file.errorString();
-        return false;
-    }
-    
-    QByteArray data = file.readAll();
-    file.close();
-    
     QJsonParseError parseError;
     QJsonDocument document = QJsonDocument::fromJson(data, &parseError);
     
     if (parseError.error != QJsonParseError::NoError) {
-        qDebug() << "MainWindow::parseJsonFile: Ошибка парсинга JSON:" << parseError.errorString()
+        qDebug() << "MainWindow::parseJsonData: Ошибка парсинга JSON:" << parseError.errorString()
                  << "позиция:" << parseError.offset;
         return false;
     }
     
     if (!document.isArray()) {
-        qDebug() << "MainWindow::parseJsonFile: Документ не является массивом";
+        qDebug() << "MainWindow::parseJsonData: Документ не является массивом";
         return false;
     }
     
@@ -180,7 +267,7 @@ bool MainWindow::parseJsonFile(const QString &filePath)
     for (int i = 0; i < array.size(); ++i) {
         QJsonValue value = array.at(i);
         if (!value.isObject()) {
-            qDebug() << "MainWindow::parseJsonFile: Элемент #" << i << "не является объектом";
+            qDebug() << "MainWindow::parseJsonData: Элемент #" << i << "не является объектом";
             continue;
         }
         
@@ -190,28 +277,28 @@ bool MainWindow::parseJsonFile(const QString &filePath)
         // Парсинг артикула (10 цифр)
         record.article = obj.value("article").toString();
         if (record.article.length() != 10 || !record.article.toLongLong()) {
-            qDebug() << "MainWindow::parseJsonFile: Некорректный артикул в записи #" << i;
+            qDebug() << "MainWindow::parseJsonData: Некорректный артикул в записи #" << i;
             continue;
         }
         
         // Парсинг количества
         record.quantity = obj.value("quantity").toInt();
         if (record.quantity <= 0) {
-            qDebug() << "MainWindow::parseJsonFile: Некорректное количество в записи #" << i;
+            qDebug() << "MainWindow::parseJsonData: Некорректное количество в записи #" << i;
             continue;
         }
         
         // Парсинг timestamp
         record.timestamp = obj.value("timestamp").toVariant().toLongLong();
         if (record.timestamp <= 0) {
-            qDebug() << "MainWindow::parseJsonFile: Некорректный timestamp в записи #" << i;
+            qDebug() << "MainWindow::parseJsonData: Некорректный timestamp в записи #" << i;
             continue;
         }
         
         // Парсинг хеша
         record.hash = obj.value("hash").toString();
         if (record.hash.isEmpty()) {
-            qDebug() << "MainWindow::parseJsonFile: Отсутствует хеш в записи #" << i;
+            qDebug() << "MainWindow::parseJsonData: Отсутствует хеш в записи #" << i;
             continue;
         }
         
@@ -219,8 +306,22 @@ bool MainWindow::parseJsonFile(const QString &filePath)
         records.append(record);
     }
     
-    qDebug() << "MainWindow::parseJsonFile: Успешно распарсено записей:" << records.size();
+    qDebug() << "MainWindow::parseJsonData: Успешно распарсено записей:" << records.size();
     return !records.isEmpty();
+}
+
+bool MainWindow::parseJsonFile(const QString &filePath)
+{
+    // Устаревший метод, используем новый подход с расшифровкой
+    QString errorMessage;
+    QByteArray data = loadAndDecryptFile(filePath, errorMessage);
+    
+    if (data.isEmpty()) {
+        qDebug() << "MainWindow::parseJsonFile: Не удалось загрузить файл:" << errorMessage;
+        return false;
+    }
+    
+    return parseJsonData(data);
 }
 
 QString MainWindow::computeHash(const InvoiceRecord &record, const QString &previousHash)
@@ -350,11 +451,13 @@ void MainWindow::onOpenButtonClicked()
     
     qDebug() << "MainWindow::onOpenButtonClicked: Начальная директория:" << initialDir;
     
+    // Обновляем фильтр для поддержки зашифрованных файлов
+    // Включаем оба типа файлов в первый фильтр, чтобы они были видны по умолчанию
     QString selectedFile = QFileDialog::getOpenFileName(
         this,
         "Выбор файла с данными",
         initialDir,
-        "JSON файлы (*.json);;Все файлы (*.*)",
+        "Все поддерживаемые файлы (*.json *.enc);;JSON файлы (*.json);;Зашифрованные файлы (*.enc);;Все файлы (*.*)",
         nullptr,
         QFileDialog::DontResolveSymlinks
     );
@@ -365,12 +468,24 @@ void MainWindow::onOpenButtonClicked()
     
     qDebug() << "MainWindow::onOpenButtonClicked: Выбран файл:" << selectedFile;
     
-    // Загружаем данные из выбранного файла
-    if (!parseJsonFile(selectedFile)) {
+    // Загружаем и расшифровываем файл (если зашифрован)
+    QString errorMessage;
+    QByteArray data = loadAndDecryptFile(selectedFile, errorMessage);
+    
+    if (data.isEmpty()) {
         QMessageBox::warning(this, "Ошибка загрузки",
                             "Не удалось загрузить данные из файла.\n\n"
                             "Файл: " + selectedFile + "\n\n"
-                            "Проверьте, что файл существует и имеет правильный формат JSON.");
+                            "Ошибка: " + errorMessage);
+        return;
+    }
+    
+    // Парсим JSON данные
+    if (!parseJsonData(data)) {
+        QMessageBox::warning(this, "Ошибка парсинга",
+                            "Не удалось распарсить данные из файла.\n\n"
+                            "Файл: " + selectedFile + "\n\n"
+                            "Проверьте, что файл имеет правильный формат JSON.");
         return;
     }
     
