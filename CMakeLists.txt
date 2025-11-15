@@ -39,3 +39,9 @@ foreach(JSON_FILE ${JSON_FILES})
     configure_file(${JSON_FILE} ${CMAKE_BINARY_DIR}/data/${JSON_NAME} COPYONLY)
 endforeach()
 
+# Копируем ключ шифрования в build директорию (если существует)
+if(EXISTS "${CMAKE_SOURCE_DIR}/config/encryption.key")
+    file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/config)
+    configure_file("${CMAKE_SOURCE_DIR}/config/encryption.key" ${CMAKE_BINARY_DIR}/config/encryption.key COPYONLY)
+endif()
+

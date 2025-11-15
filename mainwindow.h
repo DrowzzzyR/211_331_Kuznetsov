@@ -9,6 +9,7 @@ class QGridLayout;
 class QWidget;
 class QLabel;
 class QPushButton;
+class EncryptionManager;
 
 // Структура записи товарной накладной
 struct InvoiceRecord
@@ -42,7 +43,13 @@ private:
     void loadDataFromFile();
     // Получение пути к файлу с данными
     QString getDataFilePath();
-    // Парсинг JSON файла и заполнение списка записей
+    // Загрузка и расшифровка файла (если зашифрован)
+    QByteArray loadAndDecryptFile(const QString &filePath, QString &errorMessage);
+    // Проверка, является ли файл зашифрованным (по расширению .enc)
+    bool isEncryptedFile(const QString &filePath) const;
+    // Парсинг JSON данных из байтового массива
+    bool parseJsonData(const QByteArray &data);
+    // Парсинг JSON файла и заполнение списка записей (устаревший метод, используйте loadAndDecryptFile + parseJsonData)
     bool parseJsonFile(const QString &filePath);
     // Проверка цепочки хешей MD5 для всех записей
     void verifyHashChain();
@@ -59,6 +66,7 @@ private:
     QPushButton *openButton;
     QList<InvoiceRecord> records;
     QString currentFilePath;
+    EncryptionManager *encryptionManager;  // Менеджер шифрования для расшифровки файлов
 };
 
 #endif
