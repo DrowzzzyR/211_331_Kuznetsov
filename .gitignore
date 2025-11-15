@@ -50,6 +50,7 @@ cmake_install.cmake
 # Qt Creator
 *.pro.user
 *.pro.user.*
+.qtcreator/
 
 # Системные файлы
 .DS_Store
