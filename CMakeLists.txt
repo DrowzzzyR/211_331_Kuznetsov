@@ -21,11 +21,15 @@ set(SOURCES
     main.cpp
     mainwindow.cpp
     mainwindow.h
+    encryptionmanager.cpp
+    encryptionmanager.h
 )
 
 add_executable(${PROJECT_NAME} ${SOURCES})
 
-target_link_libraries(${PROJECT_NAME} PRIVATE ${QT_PACKAGE}::Widgets)
+find_package(OpenSSL REQUIRED)
+
+target_link_libraries(${PROJECT_NAME} PRIVATE ${QT_PACKAGE}::Widgets OpenSSL::Crypto)
 
 # Копируем папку data с JSON файлами в директорию сборки
 # Используем configure_file для каждого файла, чтобы обновлять при изменении
