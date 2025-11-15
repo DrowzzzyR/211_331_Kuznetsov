@@ -452,11 +452,12 @@ void MainWindow::onOpenButtonClicked()
     qDebug() << "MainWindow::onOpenButtonClicked: Начальная директория:" << initialDir;
     
     // Обновляем фильтр для поддержки зашифрованных файлов
+    // Включаем оба типа файлов в первый фильтр, чтобы они были видны по умолчанию
     QString selectedFile = QFileDialog::getOpenFileName(
         this,
         "Выбор файла с данными",
         initialDir,
-        "JSON файлы (*.json);;Зашифрованные файлы (*.enc);;Все файлы (*.*)",
+        "Все поддерживаемые файлы (*.json *.enc);;JSON файлы (*.json);;Зашифрованные файлы (*.enc);;Все файлы (*.*)",
         nullptr,
         QFileDialog::DontResolveSymlinks
     );
