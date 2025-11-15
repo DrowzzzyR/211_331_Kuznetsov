@@ -1,5 +1,6 @@
 #include "mainwindow.h"
 #include "encryptionmanager.h"
+#include "integritycheck.h"
 #include <QGridLayout>
 #include <QLabel>
 #include <QWidget>
@@ -26,15 +27,11 @@ MainWindow::MainWindow(QWidget *parent)
     setWindowTitle("211_331_Kuznetsov — Товарные накладные");
     setMinimumSize(800, 600);
     
-    // Инициализируем менеджер шифрования
     encryptionManager = new EncryptionManager();
     
-    // Пытаемся загрузить ключ шифрования из файла
-    // Ключ должен находиться в config/encryption.key относительно приложения
     QString keyPath = QCoreApplication::applicationDirPath() + "/config/encryption.key";
     QString error;
     if (!encryptionManager->loadKeyFromFile(keyPath, error)) {
-        // Если ключ не найден, пробуем найти в других местах
         QDir appDir(QCoreApplication::applicationDirPath());
         for (int i = 0; i < 5; ++i) {
             QString candidate = appDir.filePath("config/encryption.key");
@@ -71,7 +68,6 @@ MainWindow::~MainWindow()
 
 void MainWindow::setupUI()
 {
-    // Создаём центральный виджет и основной вертикальный layout
     centralWidget = new QWidget(this);
     setCentralWidget(centralWidget);
     
@@ -79,59 +75,49 @@ void MainWindow::setupUI()
     mainLayout->setContentsMargins(10, 10, 10, 10);
     mainLayout->setSpacing(10);
     
-    // Создаём горизонтальный layout для кнопки "Открыть"
     QHBoxLayout *buttonLayout = new QHBoxLayout();
     openButton = new QPushButton("Открыть", centralWidget);
     openButton->setMinimumWidth(100);
     connect(openButton, &QPushButton::clicked, this, &MainWindow::onOpenButtonClicked);
     buttonLayout->addWidget(openButton);
-    buttonLayout->addStretch(); // Растягиваем пространство справа
+    buttonLayout->addStretch();
     mainLayout->addLayout(buttonLayout);
     
-    // Создаём QGridLayout для табличного отображения записей
     gridWidget = new QWidget(centralWidget);
     gridLayout = new QGridLayout(gridWidget);
     gridLayout->setSpacing(5);
     gridLayout->setContentsMargins(0, 0, 0, 0);
     
-    // Добавляем заголовки колонок в первую строку сетки
     QLabel *articleHeader = new QLabel("Артикул", gridWidget);
     QLabel *quantityHeader = new QLabel("Количество", gridWidget);
     QLabel *dateHeader = new QLabel("Дата отгрузки", gridWidget);
     QLabel *hashHeader = new QLabel("Хеш", gridWidget);
     
-    // Стилизация заголовков
     articleHeader->setStyleSheet("font-weight: bold; font-size: 12pt; padding: 5px;");
     quantityHeader->setStyleSheet("font-weight: bold; font-size: 12pt; padding: 5px;");
     dateHeader->setStyleSheet("font-weight: bold; font-size: 12pt; padding: 5px;");
     hashHeader->setStyleSheet("font-weight: bold; font-size: 12pt; padding: 5px;");
     
-    // Размещаем заголовки в первой строке сетки
     gridLayout->addWidget(articleHeader, 0, 0);
     gridLayout->addWidget(quantityHeader, 0, 1);
     gridLayout->addWidget(dateHeader, 0, 2);
     gridLayout->addWidget(hashHeader, 0, 3);
     
-    // Настройка растягивания колонок для адаптивной раскладки
-    // Это обеспечивает совместное изменение размеров элементов при изменении размеров окна
-    gridLayout->setColumnStretch(0, 1);  // Артикул
-    gridLayout->setColumnStretch(1, 1);  // Количество
-    gridLayout->setColumnStretch(2, 2);  // Дата отгрузки
-    gridLayout->setColumnStretch(3, 3);  // Хеш (самая широкая колонка)
+    gridLayout->setColumnStretch(0, 1);
+    gridLayout->setColumnStretch(1, 1);
+    gridLayout->setColumnStretch(2, 2);
+    gridLayout->setColumnStretch(3, 3);
     
-    // Добавляем виджет с сеткой в основной layout
-    mainLayout->addWidget(gridWidget, 1); // Растягиваем по вертикали
+    mainLayout->addWidget(gridWidget, 1);
     
     qDebug() << "MainWindow::setupUI: Интерфейс с QGridLayout успешно настроен";
 }
 
 QString MainWindow::getDataFilePath()
 {
-    // Ищем файл с данными относительно директории приложения
     QString appDir = QCoreApplication::applicationDirPath();
     QString relativePath = "data/invoices_valid.json";
     
-    // Проверяем в директории приложения
     QDir dir(appDir);
     for (int i = 0; i < 5; ++i) {
         QString candidate = dir.filePath(relativePath);
@@ -143,7 +129,6 @@ QString MainWindow::getDataFilePath()
         }
     }
     
-    // Если не нашли, возвращаем путь относительно текущей директории
     QString fallback = QDir::current().filePath(relativePath);
     if (QFile::exists(fallback)) {
         return QFileInfo(fallback).canonicalFilePath();
@@ -161,6 +146,13 @@ bool MainWindow::isEncryptedFile(const QString &filePath) const
 
 QByteArray MainWindow::loadAndDecryptFile(const QString &filePath, QString &errorMessage)
 {
+#ifndef _DEBUG
+    if (!IntegrityCheck::verifyTextSegment()) {
+        errorMessage = "Обнаружена модификация исполняемого файла. Операция заблокирована.";
+        return QByteArray();
+    }
+#endif
+    
     QFile file(filePath);
     if (!file.open(QIODevice::ReadOnly)) {
         errorMessage = QString("Не удалось открыть файл: %1").arg(file.errorString());
@@ -170,17 +162,14 @@ QByteArray MainWindow::loadAndDecryptFile(const QString &filePath, QString &erro
     QByteArray data = file.readAll();
     file.close();
     
-    // Проверяем, зашифрован ли файл
     if (isEncryptedFile(filePath)) {
         qDebug() << "MainWindow::loadAndDecryptFile: Обнаружен зашифрованный файл:" << filePath;
         
-        // Проверяем, готов ли менеджер шифрования
         if (!encryptionManager || !encryptionManager->isReady()) {
             errorMessage = "Ключ шифрования не загружен. Невозможно расшифровать файл.";
             return QByteArray();
         }
         
-        // Расшифровываем данные
         QString decryptError;
         QByteArray decryptedData = encryptionManager->decrypt(data, decryptError);
         
@@ -192,7 +181,6 @@ QByteArray MainWindow::loadAndDecryptFile(const QString &filePath, QString &erro
         qDebug() << "MainWindow::loadAndDecryptFile: Файл успешно расшифрован, размер данных:" << decryptedData.size();
         return decryptedData;
     } else {
-        // Файл не зашифрован, возвращаем как есть
         qDebug() << "MainWindow::loadAndDecryptFile: Файл не зашифрован, загружаем как обычный JSON";
         return data;
     }
@@ -200,6 +188,15 @@ QByteArray MainWindow::loadAndDecryptFile(const QString &filePath, QString &erro
 
 void MainWindow::loadDataFromFile()
 {
+#ifndef _DEBUG
+    if (!IntegrityCheck::verifyTextSegment()) {
+        QMessageBox::critical(this, "Обнаружена атака",
+                            "Обнаружена модификация исполняемого файла!\n\n"
+                            "Загрузка данных заблокирована.");
+        return;
+    }
+#endif
+    
     QString filePath = getDataFilePath();
     qDebug() << "MainWindow::loadDataFromFile: Попытка загрузить данные из файла:" << filePath;
     qDebug() << "MainWindow::loadDataFromFile: Файл существует:" << QFile::exists(filePath);
@@ -212,7 +209,6 @@ void MainWindow::loadDataFromFile()
         return;
     }
     
-    // Загружаем и расшифровываем файл (если зашифрован)
     QString errorMessage;
     QByteArray data = loadAndDecryptFile(filePath, errorMessage);
     
@@ -224,7 +220,6 @@ void MainWindow::loadDataFromFile()
         return;
     }
     
-    // Парсим JSON данные
     if (!parseJsonData(data)) {
         QMessageBox::warning(this, "Ошибка парсинга",
                             "Не удалось распарсить данные из файла.\n\n"
@@ -235,12 +230,8 @@ void MainWindow::loadDataFromFile()
     
     qDebug() << "MainWindow::loadDataFromFile: Успешно загружено записей:" << records.size();
     
-    // Проверяем цепочку хешей после загрузки
     verifyHashChain();
-    
     displayRecords();
-    
-    // Сохраняем путь к текущему файлу
     currentFilePath = filePath;
 }
 
@@ -274,35 +265,31 @@ bool MainWindow::parseJsonData(const QByteArray &data)
         QJsonObject obj = value.toObject();
         InvoiceRecord record;
         
-        // Парсинг артикула (10 цифр)
         record.article = obj.value("article").toString();
         if (record.article.length() != 10 || !record.article.toLongLong()) {
             qDebug() << "MainWindow::parseJsonData: Некорректный артикул в записи #" << i;
             continue;
         }
         
-        // Парсинг количества
         record.quantity = obj.value("quantity").toInt();
         if (record.quantity <= 0) {
             qDebug() << "MainWindow::parseJsonData: Некорректное количество в записи #" << i;
             continue;
         }
         
-        // Парсинг timestamp
         record.timestamp = obj.value("timestamp").toVariant().toLongLong();
         if (record.timestamp <= 0) {
             qDebug() << "MainWindow::parseJsonData: Некорректный timestamp в записи #" << i;
             continue;
         }
         
-        // Парсинг хеша
         record.hash = obj.value("hash").toString();
         if (record.hash.isEmpty()) {
             qDebug() << "MainWindow::parseJsonData: Отсутствует хеш в записи #" << i;
             continue;
         }
         
-        record.valid = true; // Пока что все записи считаем валидными
+        record.valid = true;
         records.append(record);
     }
     
@@ -312,7 +299,6 @@ bool MainWindow::parseJsonData(const QByteArray &data)
 
 bool MainWindow::parseJsonFile(const QString &filePath)
 {
-    // Устаревший метод, используем новый подход с расшифровкой
     QString errorMessage;
     QByteArray data = loadAndDecryptFile(filePath, errorMessage);
     
@@ -326,44 +312,36 @@ bool MainWindow::parseJsonFile(const QString &filePath)
 
 QString MainWindow::computeHash(const InvoiceRecord &record, const QString &previousHash)
 {
-    // Формула: hash_i = MD5(article + quantity + timestamp + hash_i-1)
-    // Все поля преобразуем в строку и объединяем
     QString data = record.article + 
                    QString::number(record.quantity) + 
                    QString::number(record.timestamp) + 
                    previousHash;
     
-    // Вычисляем MD5 хеш
     QCryptographicHash hash(QCryptographicHash::Md5);
     hash.addData(data.toUtf8());
     QByteArray hashResult = hash.result();
     
-    // Возвращаем в формате base64
     return hashResult.toBase64();
 }
 
 void MainWindow::verifyHashChain()
 {
-    QString previousHash; // Для первой записи previousHash пустой
+    QString previousHash;
     
     for (int i = 0; i < records.size(); ++i) {
         InvoiceRecord &record = records[i];
         
-        // Вычисляем ожидаемый хеш
         QString expectedHash = computeHash(record, previousHash);
         
-        // Сравниваем с хешем из файла
         if (record.hash == expectedHash) {
             record.valid = true;
-            previousHash = record.hash; // Используем хеш из файла для следующей записи
+            previousHash = record.hash;
         } else {
-            // Если хеш не совпадает, помечаем эту и все последующие записи как невалидные
             record.valid = false;
             qDebug() << "MainWindow::verifyHashChain: Обнаружено нарушение целостности в записи #" << (i + 1)
                      << "Ожидаемый хеш:" << expectedHash
                      << "Хеш из файла:" << record.hash;
             
-            // Помечаем все последующие записи как невалидные
             for (int j = i + 1; j < records.size(); ++j) {
                 records[j].valid = false;
             }
@@ -376,12 +354,9 @@ void MainWindow::verifyHashChain()
 
 void MainWindow::displayRecords()
 {
-    // Очищаем сетку от предыдущих записей (кроме заголовков в строке 0)
-    // Удаляем все виджеты начиная со строки 1 (индекс 4 и далее, так как 4 заголовка)
-    int headerCount = 4; // Количество заголовков
+    int headerCount = 4;
     int currentCount = gridLayout->count();
     
-    // Удаляем все элементы кроме заголовков (первые 4 элемента)
     for (int i = currentCount - 1; i >= headerCount; --i) {
         QLayoutItem *item = gridLayout->takeAt(i);
         if (item) {
@@ -392,26 +367,19 @@ void MainWindow::displayRecords()
         }
     }
     
-    // Добавляем записи в сетку, начиная со строки 1 (строка 0 - заголовки)
     for (int i = 0; i < records.size(); ++i) {
         const InvoiceRecord &record = records[i];
-        int row = i + 1; // Строка в сетке (0 - заголовки)
+        int row = i + 1;
         
-        // Артикул
         QLabel *articleLabel = new QLabel(record.article, gridWidget);
-        
-        // Количество
         QLabel *quantityLabel = new QLabel(QString::number(record.quantity), gridWidget);
         
-        // Дата отгрузки (преобразуем unix timestamp в читаемый формат)
         QDateTime dateTime = QDateTime::fromSecsSinceEpoch(record.timestamp);
         QLabel *dateLabel = new QLabel(dateTime.toString("dd.MM.yyyy hh:mm:ss"), gridWidget);
         
-        // Хеш
         QLabel *hashLabel = new QLabel(record.hash, gridWidget);
-        hashLabel->setWordWrap(true); // Перенос длинного хеша
+        hashLabel->setWordWrap(true);
         
-        // Подсветка невалидных записей красным цветом с белым текстом
         if (!record.valid) {
             QString invalidStyle = "background-color: #dc3545; color: white; padding: 5px;";
             articleLabel->setStyleSheet(invalidStyle);
@@ -420,7 +388,6 @@ void MainWindow::displayRecords()
             hashLabel->setStyleSheet(invalidStyle);
         }
         
-        // Добавляем виджеты в сетку
         gridLayout->addWidget(articleLabel, row, 0);
         gridLayout->addWidget(quantityLabel, row, 1);
         gridLayout->addWidget(dateLabel, row, 2);
@@ -432,7 +399,15 @@ void MainWindow::displayRecords()
 
 void MainWindow::onOpenButtonClicked()
 {
-    // Открываем диалог выбора файла
+#ifndef _DEBUG
+    if (!IntegrityCheck::verifyTextSegment()) {
+        QMessageBox::critical(this, "Обнаружена атака",
+                            "Обнаружена модификация исполняемого файла!\n\n"
+                            "Операция заблокирована.");
+        return;
+    }
+#endif
+    
     QString initialDir;
     if (currentFilePath.isEmpty()) {
         QString defaultPath = getDataFilePath();
@@ -443,7 +418,6 @@ void MainWindow::onOpenButtonClicked()
         initialDir = fileInfo.absolutePath();
     }
     
-    // Убеждаемся, что начальная директория существует
     QDir dir(initialDir);
     if (!dir.exists()) {
         initialDir = QDir::homePath();
@@ -451,8 +425,6 @@ void MainWindow::onOpenButtonClicked()
     
     qDebug() << "MainWindow::onOpenButtonClicked: Начальная директория:" << initialDir;
     
-    // Обновляем фильтр для поддержки зашифрованных файлов
-    // Включаем оба типа файлов в первый фильтр, чтобы они были видны по умолчанию
     QString selectedFile = QFileDialog::getOpenFileName(
         this,
         "Выбор файла с данными",
@@ -463,12 +435,11 @@ void MainWindow::onOpenButtonClicked()
     );
     
     if (selectedFile.isEmpty()) {
-        return; // Пользователь отменил выбор
+        return;
     }
     
     qDebug() << "MainWindow::onOpenButtonClicked: Выбран файл:" << selectedFile;
     
-    // Загружаем и расшифровываем файл (если зашифрован)
     QString errorMessage;
     QByteArray data = loadAndDecryptFile(selectedFile, errorMessage);
     
@@ -480,7 +451,6 @@ void MainWindow::onOpenButtonClicked()
         return;
     }
     
-    // Парсим JSON данные
     if (!parseJsonData(data)) {
         QMessageBox::warning(this, "Ошибка парсинга",
                             "Не удалось распарсить данные из файла.\n\n"
@@ -491,12 +461,7 @@ void MainWindow::onOpenButtonClicked()
     
     qDebug() << "MainWindow::onOpenButtonClicked: Успешно загружено записей:" << records.size();
     
-    // Проверяем цепочку хешей
     verifyHashChain();
-    
-    // Отображаем записи
     displayRecords();
-    
-    // Сохраняем путь к текущему файлу
     currentFilePath = selectedFile;
 }

@@ -9,9 +9,9 @@ if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release CACHE STRING "" FORCE)
 endif()
 
-find_package(Qt6 COMPONENTS Widgets REQUIRED QUIET)
+find_package(Qt6 COMPONENTS Widgets Core REQUIRED QUIET)
 if(NOT Qt6_FOUND)
-    find_package(Qt5 COMPONENTS Widgets REQUIRED)
+    find_package(Qt5 COMPONENTS Widgets Core REQUIRED)
     set(QT_PACKAGE Qt5)
 else()
     set(QT_PACKAGE Qt6)
@@ -23,8 +23,6 @@ set(SOURCES
     mainwindow.h
     encryptionmanager.cpp
     encryptionmanager.h
-    debugprotection.cpp
-    debugprotection.h
     integritycheck.cpp
     integritycheck.h
 )
@@ -52,5 +50,16 @@ endforeach()
 if(EXISTS "${CMAKE_SOURCE_DIR}/config/encryption.key")
     file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/config)
     configure_file("${CMAKE_SOURCE_DIR}/config/encryption.key" ${CMAKE_BINARY_DIR}/config/encryption.key COPYONLY)
+endif()
+
+# Сборка SelfDebugger - процесса-протектора для самоотладки
+add_executable(SelfDebugger
+    SelfDebugger/main.cpp
+)
+
+target_link_libraries(SelfDebugger PRIVATE ${QT_PACKAGE}::Core)
+
+if(WIN32)
+    target_link_libraries(SelfDebugger PRIVATE advapi32)
 endif()
 
