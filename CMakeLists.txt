@@ -28,5 +28,10 @@ add_executable(${PROJECT_NAME} ${SOURCES})
 target_link_libraries(${PROJECT_NAME} PRIVATE ${QT_PACKAGE}::Widgets)
 
 # Копируем папку data с JSON файлами в директорию сборки
-file(COPY ${CMAKE_SOURCE_DIR}/data DESTINATION ${CMAKE_BINARY_DIR})
+# Используем configure_file для каждого файла, чтобы обновлять при изменении
+file(GLOB JSON_FILES "${CMAKE_SOURCE_DIR}/data/*.json")
+foreach(JSON_FILE ${JSON_FILES})
+    get_filename_component(JSON_NAME ${JSON_FILE} NAME)
+    configure_file(${JSON_FILE} ${CMAKE_BINARY_DIR}/data/${JSON_NAME} COPYONLY)
+endforeach()
 

@@ -2,6 +2,9 @@
 #include <QGridLayout>
 #include <QLabel>
 #include <QWidget>
+#include <QPushButton>
+#include <QHBoxLayout>
+#include <QVBoxLayout>
 #include <QDebug>
 #include <QFile>
 #include <QFileInfo>
@@ -12,6 +15,8 @@
 #include <QJsonObject>
 #include <QDateTime>
 #include <QMessageBox>
+#include <QFileDialog>
+#include <QCryptographicHash>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -29,20 +34,34 @@ MainWindow::~MainWindow()
 
 void MainWindow::setupUI()
 {
-    // Создаём центральный виджет и сетку для отображения данных
+    // Создаём центральный виджет и основной вертикальный layout
     centralWidget = new QWidget(this);
     setCentralWidget(centralWidget);
     
+    QVBoxLayout *mainLayout = new QVBoxLayout(centralWidget);
+    mainLayout->setContentsMargins(10, 10, 10, 10);
+    mainLayout->setSpacing(10);
+    
+    // Создаём горизонтальный layout для кнопки "Открыть"
+    QHBoxLayout *buttonLayout = new QHBoxLayout();
+    openButton = new QPushButton("Открыть", centralWidget);
+    openButton->setMinimumWidth(100);
+    connect(openButton, &QPushButton::clicked, this, &MainWindow::onOpenButtonClicked);
+    buttonLayout->addWidget(openButton);
+    buttonLayout->addStretch(); // Растягиваем пространство справа
+    mainLayout->addLayout(buttonLayout);
+    
     // Создаём QGridLayout для табличного отображения записей
-    gridLayout = new QGridLayout(centralWidget);
+    gridWidget = new QWidget(centralWidget);
+    gridLayout = new QGridLayout(gridWidget);
     gridLayout->setSpacing(5);
-    gridLayout->setContentsMargins(10, 10, 10, 10);
+    gridLayout->setContentsMargins(0, 0, 0, 0);
     
     // Добавляем заголовки колонок в первую строку сетки
-    QLabel *articleHeader = new QLabel("Артикул", centralWidget);
-    QLabel *quantityHeader = new QLabel("Количество", centralWidget);
-    QLabel *dateHeader = new QLabel("Дата отгрузки", centralWidget);
-    QLabel *hashHeader = new QLabel("Хеш", centralWidget);
+    QLabel *articleHeader = new QLabel("Артикул", gridWidget);
+    QLabel *quantityHeader = new QLabel("Количество", gridWidget);
+    QLabel *dateHeader = new QLabel("Дата отгрузки", gridWidget);
+    QLabel *hashHeader = new QLabel("Хеш", gridWidget);
     
     // Стилизация заголовков
     articleHeader->setStyleSheet("font-weight: bold; font-size: 12pt; padding: 5px;");
@@ -62,6 +81,9 @@ void MainWindow::setupUI()
     gridLayout->setColumnStretch(1, 1);  // Количество
     gridLayout->setColumnStretch(2, 2);  // Дата отгрузки
     gridLayout->setColumnStretch(3, 3);  // Хеш (самая широкая колонка)
+    
+    // Добавляем виджет с сеткой в основной layout
+    mainLayout->addWidget(gridWidget, 1); // Растягиваем по вертикали
     
     qDebug() << "MainWindow::setupUI: Интерфейс с QGridLayout успешно настроен";
 }
@@ -116,7 +138,14 @@ void MainWindow::loadDataFromFile()
     }
     
     qDebug() << "MainWindow::loadDataFromFile: Успешно загружено записей:" << records.size();
+    
+    // Проверяем цепочку хешей после загрузки
+    verifyHashChain();
+    
     displayRecords();
+    
+    // Сохраняем путь к текущему файлу
+    currentFilePath = filePath;
 }
 
 bool MainWindow::parseJsonFile(const QString &filePath)
@@ -194,6 +223,56 @@ bool MainWindow::parseJsonFile(const QString &filePath)
     return !records.isEmpty();
 }
 
+QString MainWindow::computeHash(const InvoiceRecord &record, const QString &previousHash)
+{
+    // Формула: hash_i = MD5(article + quantity + timestamp + hash_i-1)
+    // Все поля преобразуем в строку и объединяем
+    QString data = record.article + 
+                   QString::number(record.quantity) + 
+                   QString::number(record.timestamp) + 
+                   previousHash;
+    
+    // Вычисляем MD5 хеш
+    QCryptographicHash hash(QCryptographicHash::Md5);
+    hash.addData(data.toUtf8());
+    QByteArray hashResult = hash.result();
+    
+    // Возвращаем в формате base64
+    return hashResult.toBase64();
+}
+
+void MainWindow::verifyHashChain()
+{
+    QString previousHash; // Для первой записи previousHash пустой
+    
+    for (int i = 0; i < records.size(); ++i) {
+        InvoiceRecord &record = records[i];
+        
+        // Вычисляем ожидаемый хеш
+        QString expectedHash = computeHash(record, previousHash);
+        
+        // Сравниваем с хешем из файла
+        if (record.hash == expectedHash) {
+            record.valid = true;
+            previousHash = record.hash; // Используем хеш из файла для следующей записи
+        } else {
+            // Если хеш не совпадает, помечаем эту и все последующие записи как невалидные
+            record.valid = false;
+            qDebug() << "MainWindow::verifyHashChain: Обнаружено нарушение целостности в записи #" << (i + 1)
+                     << "Ожидаемый хеш:" << expectedHash
+                     << "Хеш из файла:" << record.hash;
+            
+            // Помечаем все последующие записи как невалидные
+            for (int j = i + 1; j < records.size(); ++j) {
+                records[j].valid = false;
+            }
+            break;
+        }
+    }
+    
+    qDebug() << "MainWindow::verifyHashChain: Проверка целостности завершена";
+}
+
 void MainWindow::displayRecords()
 {
     // Очищаем сетку от предыдущих записей (кроме заголовков в строке 0)
@@ -218,23 +297,91 @@ void MainWindow::displayRecords()
         int row = i + 1; // Строка в сетке (0 - заголовки)
         
         // Артикул
-        QLabel *articleLabel = new QLabel(record.article, centralWidget);
-        gridLayout->addWidget(articleLabel, row, 0);
+        QLabel *articleLabel = new QLabel(record.article, gridWidget);
         
         // Количество
-        QLabel *quantityLabel = new QLabel(QString::number(record.quantity), centralWidget);
-        gridLayout->addWidget(quantityLabel, row, 1);
+        QLabel *quantityLabel = new QLabel(QString::number(record.quantity), gridWidget);
         
         // Дата отгрузки (преобразуем unix timestamp в читаемый формат)
         QDateTime dateTime = QDateTime::fromSecsSinceEpoch(record.timestamp);
-        QLabel *dateLabel = new QLabel(dateTime.toString("dd.MM.yyyy hh:mm:ss"), centralWidget);
-        gridLayout->addWidget(dateLabel, row, 2);
+        QLabel *dateLabel = new QLabel(dateTime.toString("dd.MM.yyyy hh:mm:ss"), gridWidget);
         
         // Хеш
-        QLabel *hashLabel = new QLabel(record.hash, centralWidget);
+        QLabel *hashLabel = new QLabel(record.hash, gridWidget);
         hashLabel->setWordWrap(true); // Перенос длинного хеша
+        
+        // Подсветка невалидных записей красным цветом с белым текстом
+        if (!record.valid) {
+            QString invalidStyle = "background-color: #dc3545; color: white; padding: 5px;";
+            articleLabel->setStyleSheet(invalidStyle);
+            quantityLabel->setStyleSheet(invalidStyle);
+            dateLabel->setStyleSheet(invalidStyle);
+            hashLabel->setStyleSheet(invalidStyle);
+        }
+        
+        // Добавляем виджеты в сетку
+        gridLayout->addWidget(articleLabel, row, 0);
+        gridLayout->addWidget(quantityLabel, row, 1);
+        gridLayout->addWidget(dateLabel, row, 2);
         gridLayout->addWidget(hashLabel, row, 3);
     }
     
     qDebug() << "MainWindow::displayRecords: Отображено записей в сетке:" << records.size();
+}
+
+void MainWindow::onOpenButtonClicked()
+{
+    // Открываем диалог выбора файла
+    QString initialDir;
+    if (currentFilePath.isEmpty()) {
+        QString defaultPath = getDataFilePath();
+        QFileInfo fileInfo(defaultPath);
+        initialDir = fileInfo.absolutePath();
+    } else {
+        QFileInfo fileInfo(currentFilePath);
+        initialDir = fileInfo.absolutePath();
+    }
+    
+    // Убеждаемся, что начальная директория существует
+    QDir dir(initialDir);
+    if (!dir.exists()) {
+        initialDir = QDir::homePath();
+    }
+    
+    qDebug() << "MainWindow::onOpenButtonClicked: Начальная директория:" << initialDir;
+    
+    QString selectedFile = QFileDialog::getOpenFileName(
+        this,
+        "Выбор файла с данными",
+        initialDir,
+        "JSON файлы (*.json);;Все файлы (*.*)",
+        nullptr,
+        QFileDialog::DontResolveSymlinks
+    );
+    
+    if (selectedFile.isEmpty()) {
+        return; // Пользователь отменил выбор
+    }
+    
+    qDebug() << "MainWindow::onOpenButtonClicked: Выбран файл:" << selectedFile;
+    
+    // Загружаем данные из выбранного файла
+    if (!parseJsonFile(selectedFile)) {
+        QMessageBox::warning(this, "Ошибка загрузки",
+                            "Не удалось загрузить данные из файла.\n\n"
+                            "Файл: " + selectedFile + "\n\n"
+                            "Проверьте, что файл существует и имеет правильный формат JSON.");
+        return;
+    }
+    
+    qDebug() << "MainWindow::onOpenButtonClicked: Успешно загружено записей:" << records.size();
+    
+    // Проверяем цепочку хешей
+    verifyHashChain();
+    
+    // Отображаем записи
+    displayRecords();
+    
+    // Сохраняем путь к текущему файлу
+    currentFilePath = selectedFile;
 }

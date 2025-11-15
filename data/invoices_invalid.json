@@ -1,0 +1,33 @@
+[
+  {
+    "article": "1111111111",
+    "quantity": 5,
+    "timestamp": 1700000000,
+    "hash": "dGVzdF9oYXNoXzE="
+  },
+  {
+    "article": "2222222222",
+    "quantity": 10,
+    "timestamp": 1700001000,
+    "hash": "dGVzdF9oYXNoXzI="
+  },
+  {
+    "article": "3333333333",
+    "quantity": 15,
+    "timestamp": 1700002000,
+    "hash": "INVALID_HASH_HERE"
+  },
+  {
+    "article": "4444444444",
+    "quantity": 20,
+    "timestamp": 1700003000,
+    "hash": "dGVzdF9oYXNoXzQ="
+  },
+  {
+    "article": "5555555555",
+    "quantity": 25,
+    "timestamp": 1700004000,
+    "hash": "dGVzdF9oYXNoXzU="
+  }
+]
+

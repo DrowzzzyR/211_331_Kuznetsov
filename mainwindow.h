@@ -8,6 +8,7 @@
 class QGridLayout;
 class QWidget;
 class QLabel;
+class QPushButton;
 
 // Структура записи товарной накладной
 struct InvoiceRecord
@@ -43,12 +44,21 @@ private:
     QString getDataFilePath();
     // Парсинг JSON файла и заполнение списка записей
     bool parseJsonFile(const QString &filePath);
+    // Проверка цепочки хешей MD5 для всех записей
+    void verifyHashChain();
+    // Вычисление MD5 хеша записи по формуле: hash_i = MD5(article + quantity + timestamp + hash_i-1)
+    QString computeHash(const InvoiceRecord &record, const QString &previousHash);
     // Отображение всех записей в сетке QGridLayout
     void displayRecords();
+    // Обработчик нажатия кнопки "Открыть"
+    void onOpenButtonClicked();
 
     QWidget *centralWidget;
+    QWidget *gridWidget;
     QGridLayout *gridLayout;
+    QPushButton *openButton;
     QList<InvoiceRecord> records;
+    QString currentFilePath;
 };
 
 #endif
