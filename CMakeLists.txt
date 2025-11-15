@@ -27,3 +27,6 @@ add_executable(${PROJECT_NAME} ${SOURCES})
 
 target_link_libraries(${PROJECT_NAME} PRIVATE ${QT_PACKAGE}::Widgets)
 
+# Копируем папку data с JSON файлами в директорию сборки
+file(COPY ${CMAKE_SOURCE_DIR}/data DESTINATION ${CMAKE_BINARY_DIR})
+

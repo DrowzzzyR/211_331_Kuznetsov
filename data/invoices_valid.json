@@ -1,0 +1,39 @@
+[
+  {
+    "article": "1234567890",
+    "quantity": 10,
+    "timestamp": 1700000000,
+    "hash": "dGVzdF9oYXNoXzE="
+  },
+  {
+    "article": "2345678901",
+    "quantity": 25,
+    "timestamp": 1700001000,
+    "hash": "dGVzdF9oYXNoXzI="
+  },
+  {
+    "article": "3456789012",
+    "quantity": 50,
+    "timestamp": 1700002000,
+    "hash": "dGVzdF9oYXNoXzM="
+  },
+  {
+    "article": "4567890123",
+    "quantity": 15,
+    "timestamp": 1700003000,
+    "hash": "dGVzdF9oYXNoXzQ="
+  },
+  {
+    "article": "5678901234",
+    "quantity": 30,
+    "timestamp": 1700004000,
+    "hash": "dGVzdF9oYXNoXzU="
+  },
+  {
+    "article": "6789012345",
+    "quantity": 100,
+    "timestamp": 1700005000,
+    "hash": "dGVzdF9oYXNoXzY="
+  }
+]
+

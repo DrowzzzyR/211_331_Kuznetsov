@@ -37,8 +37,14 @@ public:
 private:
     // Настройка интерфейса с QGridLayout для отображения данных
     void setupUI();
-    // Создание виджетов для отображения записей в сетке
-    void createRecordWidgets();
+    // Загрузка данных из JSON файла при старте приложения
+    void loadDataFromFile();
+    // Получение пути к файлу с данными
+    QString getDataFilePath();
+    // Парсинг JSON файла и заполнение списка записей
+    bool parseJsonFile(const QString &filePath);
+    // Отображение всех записей в сетке QGridLayout
+    void displayRecords();
 
     QWidget *centralWidget;
     QGridLayout *gridLayout;
