@@ -1,0 +1,57 @@
+# Автоматически генерируемые файлы Qt
+moc_*.cpp
+ui_*.h
+*.moc
+qrc_*.cpp
+*.qmlc
+*.jsc
+
+# Файлы сборки
+build/
+cmake-build-*/
+CMakeCache.txt
+CMakeFiles/
+*.cmake
+!CMakeLists.txt
+cmake_install.cmake
+*.ninja
+.ninja_deps
+.ninja_log
+
+# Объектные файлы и библиотеки
+*.o
+*.obj
+*.ilk
+*.pdb
+*.stash
+*.exe
+*.dll
+*.so
+*.dylib
+*.a
+*.lib
+
+# Временные файлы
+*.tmp
+*.bak
+*.swp
+*~
+*.autosave
+
+# IDE файлы
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.sdf
+*.opensdf
+
+# Qt Creator
+*.pro.user
+*.pro.user.*
+
+# Системные файлы
+.DS_Store
+Thumbs.db
+
